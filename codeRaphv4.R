@@ -1,4 +1,5 @@
 # Projet d'econometrie spatiale 
+  # Duco, Adjerad
 
 # libraries ----------------------------------------
 library(sf)
@@ -15,8 +16,10 @@ library(dplyr)
 library(spdep)
 library(xtable)
 library(bnstruct)
+library(stargazer)
 library(DMwR) # pour l'imputation knn
-
+library(cartography)
+library(maptools)
 
 # working directory --------------------------------
 setwd("~/DocumentsRaph/Economie/M2 ENSAE/Econometrie spatiale")
@@ -33,11 +36,11 @@ st_crs(communes) <- 2154
 
 # Donnees pour les regressions ----------------------
 
-  # Les donnees ont √©t√© r√©cup√©r√©es sur data.gouv
-# donn√©es locales 2014 de l'Insee au niveau de la commune
+  # Les donnees ont ÈtÈ rÈcupÈrÈes sur data.gouv
+# donnÈes locales 2014 de l'Insee au niveau de la commune
 donnees_locales_2014 <- read_delim("donnees_locales_2014.csv", 
                                    ";", escape_double = FALSE, trim_ws = TRUE)
-# donn√©es collectivites.locales.gouv
+# donnÈes collectivites.locales.gouv
 city_all <- readr::read_csv("city_all.csv") 
 
 # table d'appartenance aux EPCI + type EPCI
@@ -46,7 +49,7 @@ communes_2014 <- readr::read_delim("donnees_communes_epci_2014.csv",
                                                           skip = 1)
 
 
-# Donn√©es m√©nages pour TH, TFPNB,TFPB
+# DonnÈes mÈnages pour TH, TFPNB,TFPB
 data_loc_2014 <- donnees_locales_2014 %>% dplyr::select(CODGEO, `Nb Menages`,
                                                      `Nb Residences Principales`,
                                                      `Nb Residences Secondaires`,
@@ -77,26 +80,26 @@ communes_2014 <- communes_2014 %>% dplyr::rename(INSEE_COM = CODGEO)%>%
 dataloc_2014 <- data_loc_2014 %>% dplyr::right_join(communes_2014, by = "INSEE_COM")
 rm(data_loc_2014, communes_2014)
 
-# Constitution de la base de donn√©es ----------------
+# Constitution de la base de donnÈes ----------------
   # Selection des taux votes par conseil municipal
 city_all <- city_all %>% 
-  dplyr::rename(INSEE_COM = `cog (code officiel g√©ographique)`,
+  dplyr::rename(INSEE_COM = `cog (code officiel gÈographique)`,
                 dotation_fonct = `dotation globale de fonctionnement`,
                 taxe_habit = `taxe d'habitation (y compris thlv) - taux`,
-                taxe_add_fonciere_non_bati = `taxe additionnelle √† la taxe fonci√®re sur les propri√©t√©s non b√¢ties - taux`,
-                impo_forfaitaire_entreprise_reseau = `impositions forfaitaires sur les entreprises de r√©seau - taux`,
-                cotis_va_entreprise = `cotisation sur la valeur ajout√©e des entreprises - taux`,
-                cotis_fonciere_entreprise = `cotisation fonci√®re des entreprises - taux`,
-                taxe_prof = `taxe professionnelle (hors bases √©cr√™t√©es) - taux`,
+                taxe_add_fonciere_non_bati = `taxe additionnelle ‡ la taxe fonciËre sur les propriÈtÈs non b‚ties - taux`,
+                impo_forfaitaire_entreprise_reseau = `impositions forfaitaires sur les entreprises de rÈseau - taux`,
+                cotis_va_entreprise = `cotisation sur la valeur ajoutÈe des entreprises - taux`,
+                cotis_fonciere_entreprise = `cotisation fonciËre des entreprises - taux`,
+                taxe_prof = `taxe professionnelle (hors bases ÈcrÍtÈes) - taux`,
                 encours_dette = `encours total de la dette au 31/12/n`,
-                depense_equipement = `d√©penses d'√©quipement`,
-                caf = `capacit√© d'autofinancement = caf`,
-                taxe_fonciere_non_bati = `taxe fonci√®re sur les propri√©t√©s non b√¢ties - taux`,
-                impot_locaux =`imp√¥ts locaux`,
+                depense_equipement = `dÈpenses d'Èquipement`,
+                caf = `capacitÈ d'autofinancement = caf`,
+                taxe_fonciere_non_bati = `taxe fonciËre sur les propriÈtÈs non b‚ties - taux`,
+                impot_locaux =`impÙts locaux`,
                 resultat_comptable = `resultat comptable = a - b = r`, 
-                taxe_fonciere_bati = `taxe fonci√®re sur les propri√©t√©s b√¢ties - taux`,
+                taxe_fonciere_bati = `taxe fonciËre sur les propriÈtÈs b‚ties - taux`,
                 taxe_surface_commerciales = `taxe sur les surfaces commerciales - taux`,
-                annee = ann√©e,
+                annee = annÈe,
                 pop = population)%>%
   dplyr::select(INSEE_COM, dotation_fonct,taxe_habit,taxe_add_fonciere_non_bati ,
                 impo_forfaitaire_entreprise_reseau, cotis_va_entreprise,cotis_fonciere_entreprise,
@@ -116,7 +119,7 @@ rm(city_all)
 
 #city <- city  %>% dplyr::select(INSEE_COM, cotis)
 
-# On fusionne avec les donn√©es locales 2014
+# On fusionne avec les donnÈes locales 2014
 
 city2 <- city %>% dplyr::left_join(dataloc_2014, by = "INSEE_COM")
 dataset <- communes %>% dplyr::left_join(city2, by ="INSEE_COM")
@@ -126,31 +129,45 @@ save(dataset, file = "data2014.RData")
 rm(city,city2,communes,dataloc_2014)
 head(dataset)
 
-# -------------------------------------------------------------------------
+# focus sur quelques rÈgions
 load("data2014.RData")
-# Graphiques par r√©gion
-# Il y a 13 r√©gions 
-plot_region_taux <- function(code_region){
-  dataset2 <-  dataset %>% filter(CODE_REG == code_region)
-  ggplot(data = dataset2) + geom_sf(aes(fill = taxe_habit),colour = NA) +
-    coord_sf(datum = NA)+
-    ggtitle(paste0("R√©gion ",dataset2$NOM_REG[1]))+
-    theme(text=element_text(size=12),
-          plot.title = element_text(hjust = 0.5, face = "bold"),
-          plot.subtitle = element_text(hjust = 0.5),
-          plot.caption = element_text(face ="italic"),
-          legend.position = "right")+  scale_fill_gradientn(colours = rev(heat.colors(7)))
-  ggsave(paste0(dataset2$NOM_REG[1],".png"))
-}
-plot_region_taux(11)
-# Ne pas faire tourner: pour ploter sur toutes les r√©gions, mais tr√®s long
-code_reg <- levels(dataset$CODE_REG)
-code_reg <- as.numeric(code_reg)
-for (i in 1:length(code_reg)){
-  plot_region_taux(i)
-}
+# Ile de France, Alsace Champagne Ardenne Lorraine, Bretagne, NPDC
+# centre val de loire, 
+data_regions <- dataset %>% filter(CODE_REG %in% c(11,32,44,28))
+save(data_regions, file = "data_regions.RData")
+data_reg <- as(data_regions, "Spatial")
+save(data_reg, file = "data_reg.RData")
+
+# -------------------------------------------------------------------------
+load("data_regions.RData")
+ggplot(data = data_regions) + geom_sf(aes(fill = taxe_habit),colour = NA) +
+  coord_sf(datum = NA)+
+  ggtitle("RÈgions spÈcifiques nord France TH 2014")+
+  theme(text=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5),
+        plot.caption = element_text(face ="italic"),
+        legend.position = "right")+  theme_bw()+ scale_fill_gradientn(colours = mycols)
+
+ggplot(data = data_regions) + geom_sf(aes(fill = taxe_fonciere_non_bati),colour = NA) +
+  coord_sf(datum = NA)+
+  ggtitle("RÈgions spÈcifiques nord France TPFNB 2014")+
+  theme(text=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5),
+        plot.caption = element_text(face ="italic"),
+        legend.position = "right")+ theme_bw()+ scale_fill_gradientn(colours = mycols)
+
+ggplot(data = data_regions) + geom_sf(aes(fill = taxe_fonciere_bati),colour = NA) +
+  coord_sf(datum = NA)+
+  ggtitle("RÈgions spÈcifiques nord France TPFB 2014")+
+  theme(text=element_text(size=12),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5),
+        plot.caption = element_text(face ="italic"),
+        legend.position = "right")+ theme_bw()+ scale_fill_gradientn(colours = mycols)
+
 # Graphiques france ------------------------------------------------
-#dataset3 <- dataset %>% sf::st_centroid(.)
 
 plot_france_taux_annee <- function(dataset, num_annee, nom_var){
   dataset2 <- dataset %>% dplyr::filter(annee == num_annee)
@@ -164,8 +181,8 @@ plot_france_taux_annee(dataset, 2014,"taxe_habit")
 plot_france_taux_annee(dataset, 2014,"taxe_fonciere_bati")
 plot_france_taux_annee(dataset, 2014,"taxe_fonciere_non_bati")
 
-# Ne pas faire tourner, ce sera pour g√©n√©rer automatiquement toutes les cartes, mais
-# c'est tr√®s long
+# Ne pas faire tourner, ce sera pour gÈnÈrer automatiquement toutes les cartes, mais
+# c'est trËs long
 annee <- c(2000,2015)
 var <- c("taxe_habit","taxe_fonciere_non_bati","taxe_fonciere_bati")
 
@@ -182,25 +199,38 @@ for (i in annee){
 # -----------------------------------------------------------------
 # checkpoint
 
-load("spatialpolygondata.RData")
-
+#load("spatialpolygondata.RData") # all France
+load("data_reg.RData") # specific regions
+data <- data_reg
 class(data)
 # The object has slots:
   # - the first slot is the data
   # - the second slot is the polygons 
   # - the third slot is the bounding box drawn around the boundaries
   # - the fourth slot contains the porjections proj4string
-# on repasse √† un objet sp pour utiliser les packages de regression
+# on repasse ‡ un objet sp pour utiliser les packages de regression
 str(slot(data,"data"))
 
 
 # summary stat of variable of interest
 summary(data@data$taxe_habit)
-summary(data@data$taxe_add_fonciere_non_bati)
 summary(data@data$taxe_fonciere_non_bati)
 summary(data@data$taxe_fonciere_bati)
 
-# Imputation par plus proche voisins des valeurs manquantes:
+# Histogrammes --------------------------------
+
+labelY <- "Taxe d'habitation 2014"
+mycols <- carto.pal(pal1 = "green.pal", n1 = 5, pal2 = "orange.pal", n2 = 10)
+hist(data@data$taxe_habit,breaks = 15,col=mycols,xlab = "Y",main=labelY)
+
+labelY <- "TFNB 2014"
+hist(data@data$taxe_fonciere_non_bati,breaks = 15,col=mycols,xlab = "Y",main=labelY)
+
+labelY <- "TFB 2014"
+hist(data@data$taxe_fonciere_bati,breaks = 15,col=mycols,xlab = "Y",main=labelY)
+
+# Imputation par plus proche voisins des valeurs manquantes -------
+    # seulement sur la France entiere
 # imputation par 10 voisins plus proche par knn
 y <- data@data$taxe_habit
 summary(data@data$taxe_habit)
@@ -261,6 +291,8 @@ data@data$lencours_dette <- log(data@data$encours_dette)
 data@data$lencours_dette[is.infinite(data@data$lencours_dette)] <- 0
 data@data$lencours_dette[is.na(data@data$lencours_dette)] <- 0
 data@data$lpop <- log(data@data$POPULATION)
+data@data$lpop[is.infinite(data@data$lpop)] <- 0
+
 data@data$lnb_proprio <- log(data@data$nb_proprio)
 data@data$lnb_proprio[is.infinite(data@data$lnb_proprio)] <- 0
 data@data$lnb_proprio[is.na(data@data$lnb_proprio)] <- 0 # eventuellement knn imput
@@ -272,51 +304,60 @@ data@data$lpib[is.na(data@data$lpib)] <- 0
 
 
 summary(data@data$depense_equipement)
-summary(data@data$encours_dette)
-summary(data@data$dotation_fonct)
+summary(data@data$lencours_dette)
+summary(data@data$ldotation_fonct)
 summary(data@data$lnb_proprio)
 summary(data@data$lnb_log)
 summary(data@data$prop_log_vacant)
 summary(data@data$lnb_menage)
 summary(data@data$lnb_actif)
-summary(data@data$ldotation_fonct)
 summary(data@data$lpib)
+summary(data@data$lpop)
 
 
 
 # lencours_dette, dotation_fonc
-# eventuellement ajouter var sur activit√© √©co, chomage, nb entreprises
-fit_lm_th <- lm(taxe_habit~lnb_log+prop_log_vacant+lnb_menage+lnb_actif+
-               lencours_dette + ldotation_fonct+lpib, data = data@data,
+# eventuellement ajouter var sur activitÈ Èco, chomage, nb entreprises
+fit_lm_th <- lm(taxe_habit~lnb_log+lpop+lnb_menage+
+                  lencours_dette+ldotation_fonct, data = data@data,
                na.action ="na.exclude")
 summary(fit_lm_th)
 
-fit_lm_tfb <- lm(taxe_fonciere_bati~lnb_log+lnb_menage+lnb_actif+
-                  lencours_dette + ldotation_fonct+lpib, data = data@data,
+fit_lm_tfb <- lm(taxe_fonciere_bati~lnb_log+lpop+lnb_proprio+
+                  lencours_dette + ldotation_fonct, data = data@data,
                  na.action ="na.exclude")
 summary(fit_lm_tfb)
 
-fit_lm_tfnb <- lm(taxe_fonciere_non_bati~lnb_log+prop_log_vacant+lnb_menage+lnb_actif+
-                  lencours_dette + ldotation_fonct+lpib, data = data@data,
+fit_lm_tfnb <- lm(taxe_fonciere_non_bati~lnb_log+lnb_proprio+
+                  lencours_dette + ldotation_fonct, data = data@data,
                   na.action ="na.exclude")
 summary(fit_lm_tfnb)
-
+stargazer(fit_lm_th,fit_lm_tfnb,fit_lm_tfb, 
+          dep.var.labels=c("Taxe d'Habitation","TPFNB","TPFB"),
+          covariate.labels=c("Nb. logements (log)","Population (log)",
+                             "Nb. mÈnages (log)", "Nb. propriÈtaires (log)",
+                             "Encours dette (log)", "Dotation fonctionnelle (log)"))
 # modeling spatial dependence
   # weight matrix based on queen
-# attention cela prend du temps de cr√©er la matrice des voisins
+# attention cela prend du temps de crÈer la matrice des voisins
 list_queen <- spdep::poly2nb(data, queen = T)
-save(list_queen, file = "liste_queen.RData")
-load("liste_queen.RData")
+#save(list_queen, file = "liste_queen.RData")
+save(list_queen, file = "liste_queen_reg.RData")
+
+#load("liste_queen.RData")
+load("liste_queen_reg.RData")
 # this is rapid:
 W_q <- spdep::nb2listw(list_queen, style = "W", zero.policy = TRUE)
 print(W_q, zero.policy=TRUE) # 12 communes sans voisins
 #plot(W_q,coordinates(data))
 
 # weight matrix based on rook
-# attention, pareil, cela prend du temps de cr√©er cette matrice:
+# attention, pareil, cela prend du temps de crÈer cette matrice:
 list_rook <- spdep::poly2nb(data, queen = F)
-save(list_rook, file = "liste_rook.RData")
-load("liste_rook.RData")
+#save(list_rook, file = "liste_rook.RData")
+save(list_rook, file = "liste_rook_reg.RData")
+#load("liste_rook.RData")
+load("liste_rook_reg.RData")
 # this is rapid:
 W_r <- spdep::nb2listw(list_rook, style = "W", zero.policy = T)
 print(W_r, zero.policy=TRUE) # same 12 regions with no links
@@ -348,6 +389,149 @@ W <- W_q
 moran.lm<-lm.morantest(fit_lm_th,zero.policy = TRUE, W, alternative = "two.sided")
 print(moran.lm)
 
+# Diagramme de Moran ----------------------------------------------------
+moran.plot(data@data$taxe_habit, listw = W, zero.policy = T, labels= F)
+moran.plot(data@data$taxe_fonciere_non_bati, listw = W, zero.policy = T, labels= F)
+moran.plot(data@data$taxe_fonciere_bati, listw = W, zero.policy = T, labels= F)
+
+# construction diagramme de Moran
+tab <- data@data
+tab$Y <- tab$taxe_habit
+tab$Y_std<-scale(tab$Y)
+tab$Y_lag<-lag.listw(W,tab$Y)
+tab$Y_std_lag<-lag.listw(W,tab$Y_std)
+par(mfrow=c(1,1), mar=c(4,4,2,2))
+plot(x=tab$Y_std,y=tab$Y_std_lag,main="Diagramme de Moran TH",xlab = "Observed",ylab
+     ="Lagged", col = rgb(red = 0, green = 0, blue = 0, alpha = 0.4))
+abline(h=0,v=0)
+modele_moran<-lm(tab$Y_std_lag~tab$Y_std)
+abline(modele_moran, lty=2,lwd=1,col="gray20")
+text(-1,-1,"Low-Low",col="grey")
+text(-1,1,"Low-High",col="gray20")
+text(1,-1,"High-Low",col="gray20")
+text(1,1,"High-High",col="gray79")
+
+tab <- data@data
+tab$Y <- tab$taxe_fonciere_non_bati
+tab$Y_std<-scale(tab$Y)
+tab$Y_lag<-lag.listw(W,tab$Y)
+tab$Y_std_lag<-lag.listw(W,tab$Y_std)
+par(mfrow=c(1,1), mar=c(4,4,2,2))
+plot(x=tab$Y_std,y=tab$Y_std_lag,main="Diagramme de Moran TPFNB",xlab = "Observed",ylab
+     ="Lagged", col = rgb(red = 0, green = 0, blue = 0, alpha = 0.4))
+abline(h=0,v=0)
+modele_moran<-lm(tab$Y_std_lag~tab$Y_std)
+abline(modele_moran, lty=2,lwd=1,col="gray20")
+text(-1,-1,"Low-Low",col="grey")
+text(-1,1,"Low-High",col="gray20")
+text(1,-1,"High-Low",col="gray20")
+text(1,1,"High-High",col="gray79")
+
+tab <- data@data
+tab$Y <- tab$taxe_fonciere_bati
+tab$Y_std<-scale(tab$Y)
+tab$Y_lag<-lag.listw(W,tab$Y)
+tab$Y_std_lag<-lag.listw(W,tab$Y_std)
+par(mfrow=c(1,1), mar=c(4,4,2,2))
+plot(x=tab$Y_std,y=tab$Y_std_lag,main="Diagramme de Moran TPFB",xlab = "Observed",ylab
+     ="Lagged", col = rgb(red = 0, green = 0, blue = 0, alpha = 0.4))
+abline(h=0,v=0)
+modele_moran<-lm(tab$Y_std_lag~tab$Y_std)
+abline(modele_moran, lty=2,lwd=1,col="gray20")
+text(-1,-1,"Low-Low",col="grey")
+text(-1,1,"Low-High",col="gray20")
+text(1,-1,"High-Low",col="gray20")
+text(1,1,"High-High",col="gray79")
+
+# Hot cold spots ------------------------------
+# local Moran I
+lm_th <- localmoran(data@data$taxe_habit, listw = W, zero.policy = T)
+tab2 <- as.data.frame(lm_th)
+  # La variable Ii est l'indice d'autocorrÈlation spatiale local de la rÈgion
+    # l'indice sera positif pour les provinces de type Low-Low ou High-High mais nÈgatif pour les
+    # provinces de type Low-High ou High-Low.
+  # la variable Pr(z>0) exprime la mÍme chose en fournissant la p-value du test d'autocorrÈlation
+    # spatiale locale.
+tab <- data@data
+tab$Y <- tab$taxe_habit
+tab$Y_std<-scale(tab$Y)
+tab$Y_lag<-lag.listw(W,tab$Y)
+tab$Y_std_lag<-lag.listw(W,tab$Y_std)
+tabres <- cbind(tab,tab2)
+head(tabres)
+par(mfrow=c(1,1),mar=c(2,2,2,2))
+# Carte de Moran
+q1<-as.factor(tabres$Y_std>0)
+levels(q1)<-c("Low","High")
+q2<-as.factor(tabres$Y_std_lag>0)
+levels(q2)<-c("Low","High")
+MapMoran<-paste(as.character(q1),as.character(q2),sep="-")
+MapMoran[abs(tabres$Z.Ii)<2]<-"Non Sign."
+labels=c("High-High","Low-Low","High-Low","Low-High","Non Sign.")
+tab$Moran_type<-factor(MapMoran,levels=labels)
+tab$Moran_color<-tab$Moran_type
+colors=c("red","blue","lightpink","skyblue2","white")
+levels(tab$Moran_color)<-colors
+tab$Moran_color<-as.character(tab$Moran_color)
+colors<-c("red","blue","lightpink","skyblue2","white")
+plot(data,col=tab$Moran_color)
+legend("topright",legend=labels, fill=colors,bty="n")
+
+lm_tfnb <- localmoran(data@data$taxe_fonciere_non_bati, listw = W, zero.policy = T)
+tab2 <- as.data.frame(lm_tfnb)
+tab <- data@data
+tab$Y <- tab$taxe_fonciere_non_bati
+tab$Y_std<-scale(tab$Y)
+tab$Y_lag<-lag.listw(W,tab$Y)
+tab$Y_std_lag<-lag.listw(W,tab$Y_std)
+tabres <- cbind(tab,tab2)
+head(tabres)
+par(mfrow=c(1,1),mar=c(2,2,2,2))
+# Carte de Moran
+q1<-as.factor(tabres$Y_std>0)
+levels(q1)<-c("Low","High")
+q2<-as.factor(tabres$Y_std_lag>0)
+levels(q2)<-c("Low","High")
+MapMoran<-paste(as.character(q1),as.character(q2),sep="-")
+MapMoran[abs(tabres$Z.Ii)<2]<-"Non Sign."
+labels=c("High-High","Low-Low","High-Low","Low-High","Non Sign.")
+tab$Moran_type<-factor(MapMoran,levels=labels)
+tab$Moran_color<-tab$Moran_type
+colors=c("red","blue","lightpink","skyblue2","white")
+levels(tab$Moran_color)<-colors
+tab$Moran_color<-as.character(tab$Moran_color)
+colors<-c("red","blue","lightpink","skyblue2","white")
+plot(data,col=tab$Moran_color)
+legend("topright",legend=labels, fill=colors,bty="n")
+
+lm_tfb <- localmoran(data@data$taxe_fonciere_bati, listw = W, zero.policy = T)
+tab2 <- as.data.frame(lm_tfb)
+tab <- data@data
+tab$Y <- tab$taxe_fonciere_bati
+tab$Y_std<-scale(tab$Y)
+tab$Y_lag<-lag.listw(W,tab$Y)
+tab$Y_std_lag<-lag.listw(W,tab$Y_std)
+tabres <- cbind(tab,tab2)
+head(tabres)
+par(mfrow=c(1,1),mar=c(2,2,2,2))
+# Carte de Moran
+q1<-as.factor(tabres$Y_std>0)
+levels(q1)<-c("Low","High")
+q2<-as.factor(tabres$Y_std_lag>0)
+levels(q2)<-c("Low","High")
+MapMoran<-paste(as.character(q1),as.character(q2),sep="-")
+MapMoran[abs(tabres$Z.Ii)<2]<-"Non Sign."
+labels=c("High-High","Low-Low","High-Low","Low-High","Non Sign.")
+tab$Moran_type<-factor(MapMoran,levels=labels)
+tab$Moran_color<-tab$Moran_type
+colors=c("red","blue","lightpink","skyblue2","white")
+levels(tab$Moran_color)<-colors
+tab$Moran_color<-as.character(tab$Moran_color)
+colors<-c("red","blue","lightpink","skyblue2","white")
+plot(data,col=tab$Moran_color)
+legend("topright",legend=labels, fill=colors,bty="n")
+
+
 # Lagrande multiplier test --------------
 # LM test for spatial dependence are included in lm.LMtests
 # Taxe habitation
@@ -368,9 +552,9 @@ df <- data.frame('SARMA' = c(SARMA$statistic,SARMA$p.value),
 table_tests <- xtable(t(df))
 colnames(table_tests) <- c("stat","p_value")
 knitr::kable(table_tests)
-  # il y a de l'autocorr√©lation 
-  # on penche vers un modele SEM a cause du RLMlag
 
+  # il y a de l'autocorrÈlation 
+  
 
 
 # LM test for spatial dependence are included in lm.LMtests
@@ -393,8 +577,8 @@ table_tests <- xtable(t(df))
 colnames(table_tests) <- c("stat","p_value")
 knitr::kable(table_tests)
 
-# il y a de l'autocorr√©lation 
-# on penche vers un modele SARMA
+# il y a de l'autocorrÈlation 
+
 
 # LM test for spatial dependence are included in lm.LMtests
 # Taxe foncier non bati
@@ -416,25 +600,96 @@ table_tests <- xtable(t(df))
 colnames(table_tests) <- c("stat","p_value")
 knitr::kable(table_tests)
 
-# il y a de l'autocorr√©lation 
+# il y a de l'autocorrÈlation 
 # on penche vers un modele SARMA
 
 # Spatial regressions -------------------------------
 # SAR model -----------------------------------------
-#data@data$taxe_habit <-data@data$taxe_habit*100
-
-fit_sar_th <- lagsarlm(taxe_habit~lnb_log+prop_log_vacant+lnb_menage+lnb_actif+
-                      lencours_dette + ldotation_fonct+lpib, data = data@data, W,
+memory.limit()
+fit_sar_th <- lagsarlm(taxe_habit~lnb_log+lpop+
+                         lencours_dette + ldotation_fonct+lpib, data = data@data, W,
                     zero.policy = T)
-summary(fit_sar)
+summary(fit_sar_th)
+fit_sar_tfnb <- lagsarlm(taxe_fonciere_non_bati~lnb_log+lpop+
+                         lencours_dette + ldotation_fonct+lpib, data = data@data, W,
+                       zero.policy = T)
+summary(fit_sar_tfnb)
+fit_sar_tfb <- lagsarlm(taxe_fonciere_bati~lnb_log+lpop+
+                         lencours_dette + ldotation_fonct+lpib, data = data@data, W,
+                       zero.policy = T)
+summary(fit_sar_tfb)
+# sar output to latex
+stargazer(fit_sar_th,fit_sar_tfnb,fit_sar_tfb, 
+          dep.var.labels=c("Taxe d'Habitation","TPFNB","TPFB"),
+          covariate.labels=c("Nb. logements (log)","Population (log)",
+                             "Encours dette (log)", "Dotation fonctionnelle (log)",
+                             "PIB (log)"))
 
 # modele par MLE (fonctionne, alors que le premier non)
-sar2sls_fit <-stsls(taxe_habit~nb_log+encours_dette, data = data@data, W,
-                    zero.policy = T, na.action = "na.exclude")
-sar2sls_fit <-stsls(taxe_habit~nb_log+nb_menage+nb_residences_princ+nb_actif+
-                       pib+encours_dette, data = data@data, W,
+sar2sls_fit_th <-stsls(taxe_habit~lnb_log+lpop+
+                      lencours_dette + ldotation_fonct+lpib, data = data@data, W,
                     zero.policy = T, na.action = "na.exclude")
 
 
-summary(sar2sls_fit)
-data@data$sar.res <- resid(sar2sls_fit)
+summary(sar2sls_fit_th)
+sar2sls_fit_tfnb <-stsls(taxe_fonciere_non_bati~lnb_log+lpop+
+                         lencours_dette + ldotation_fonct+lpib, data = data@data, W,
+                       zero.policy = T, na.action = "na.exclude")
+
+
+summary(sar2sls_fit_tfnb)
+sar2sls_fit_tfb <-stsls(taxe_fonciere_bati~lnb_log+lpop+
+                           lencours_dette + ldotation_fonct+lpib, data = data@data, W,
+                         zero.policy = T, na.action = "na.exclude")
+
+
+summary(sar2sls_fit_tfb)
+
+data@data$ols_res_th <- resid(fit_lm_th) # residuals ols
+data@data$sar_res_th <- resid(sar2sls_fit_th) # residuals sar
+
+data@data$ols_res_tfb <- resid(fit_lm_tfb) # residuals ols
+data@data$sar_res_tfb <- resid(sar2sls_fit_tfb) # residuals sar
+
+data@data$ols_res_tfnb <- resid(fit_lm_tfnb) # residuals ols
+data@data$sar_res_tfnb <- resid(sar2sls_fit_tfnb) # residuals sar
+
+# plot des rÈsidus pour TH - takes long time
+spplot(data,"ols_res_th",
+       at=seq(min(data@data$ols_res_th,na.rm=TRUE),max(data@data$ols_res_th,na.rm=TRUE),length=12),col.regions=rev(brewer.pal(11,"RdBu")))
+
+spplot(data,"sar_res_th",
+       at=seq(min(data@data$sar_res_th,na.rm=TRUE),max(data@data$sar_res_th,na.rm=TRUE),length=12),col.regions=rev(brewer.pal(11,"RdBu")))
+
+# Marginal effects ---------------------------------
+imp_th <- impacts(fit_sar_th, listw=W )
+imp_tfnb <- impacts(fit_sar_tfnb, listw=W )
+imp_tfb <- impacts(fit_sar_tfb, listw=W )
+
+# SEM models ---------------------------------------
+errorsalm_th<-errorsarlm(taxe_habit~lnb_log+lpop+
+                           lencours_dette + ldotation_fonct+lpib, data=data@data,
+                          W,zero.policy = T, na.action = "na.exclude" )
+summary(errorsalm_th)
+errorsalm_tfnb<-errorsarlm(taxe_fonciere_non_bati~lnb_log+lpop+
+                           lencours_dette + ldotation_fonct+lpib, data=data@data,
+                         W,zero.policy = T, na.action = "na.exclude" )
+summary(errorsalm_tfnb)
+errorsalm_tfb<-errorsarlm(taxe_fonciere_bati~lnb_log+lpop+
+                           lencours_dette + ldotation_fonct+lpib, data=data@data,
+                         W,zero.policy = T, na.action = "na.exclude" )
+summary(errorsalm_tfb)
+# sem output to latex
+stargazer(errorsalm_th,errorsalm_tfnb,errorsalm_tfb, 
+          dep.var.labels=c("Taxe d'Habitation","TPFNB","TPFB"),
+          covariate.labels=c("Nb. logements (log)","Population (log)",
+                             "Encours dette (log)", "Dotation fonctionnelle (log)",
+                             "PIB (log)"))
+# approach with feasible generalized least squares
+fgls_th<-GMerrorsar(taxe_habit~lnb_log+lpop+
+                      lencours_dette + ldotation_fonct+lpib, data=data@data, W,zero.policy = T)
+summary(fgls_th)
+# Geographically weighted regression ------------------------------------
+gwr_model_th<- gwr(taxe_fonciere_bati~lnb_log+lpop+
+                     lencours_dette + ldotation_fonct+lpib,data=data@data,
+                bandwidth=750000,fit.points=us_grid2)
