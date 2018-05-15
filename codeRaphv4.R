@@ -1,5 +1,5 @@
 # Projet d'econometrie spatiale 
-
+  # Duco, Adjerad
 
 # libraries ----------------------------------------
 library(sf)
@@ -21,6 +21,9 @@ library(DMwR) # pour l'imputation knn
 library(cartography)
 library(maptools)
 library(reshape2)
+library(plm)
+library(splm)
+
 
 # working directory --------------------------------
 setwd("~/DocumentsRaph/Economie/M2 ENSAE/Econometrie spatiale")
@@ -37,11 +40,11 @@ st_crs(communes) <- 2154
 
 # Donnees pour les regressions ----------------------
 
-  # Les donnees ont Ã©tÃ© rÃ©cupÃ©rÃ©es sur data.gouv
-# donnÃ©es locales 2014 de l'Insee au niveau de la commune
+  # Les donnees ont été récupérées sur data.gouv
+# données locales 2014 de l'Insee au niveau de la commune
 donnees_locales_2014 <- read_delim("donnees_locales_2014.csv", 
                                    ";", escape_double = FALSE, trim_ws = TRUE)
-# donnÃ©es collectivites.locales.gouv
+# données collectivites.locales.gouv
 city_all <- readr::read_csv("city_all.csv") 
 
 # table d'appartenance aux EPCI + type EPCI
@@ -49,11 +52,11 @@ communes_2014 <- readr::read_delim("donnees_communes_epci_2014.csv",
                                                           ";", escape_double = FALSE, trim_ws = TRUE, 
                                                           skip = 1)
 
-# Types EPCI FPU ou FA (fiscalitÃ© unique ou fiscalitÃ© additionnelle)
+# Types EPCI FPU ou FA (fiscalité unique ou fiscalité additionnelle)
 base_epci_fisca2014 <- read_delim("epcisanscom2014.csv", 
                                               ";", escape_double = FALSE, trim_ws = TRUE)
 
-# DonnÃ©es mÃ©nages pour TH, TFPNB,TFPB
+# Données ménages pour TH, TFPNB,TFPB
 data_loc_2014 <- donnees_locales_2014 %>% dplyr::select(CODGEO, `Nb Menages`,
                                                      `Nb Residences Principales`,
                                                      `Nb Residences Secondaires`,
@@ -84,26 +87,26 @@ communes_2014 <- communes_2014 %>% dplyr::rename(INSEE_COM = CODGEO)%>%
 dataloc_2014 <- data_loc_2014 %>% dplyr::right_join(communes_2014, by = "INSEE_COM")
 rm(data_loc_2014, communes_2014)
 
-# Constitution de la base de donnÃ©es ----------------
+# Constitution de la base de données ----------------
   # Selection des taux votes par conseil municipal
 city_all <- city_all %>% 
-  dplyr::rename(INSEE_COM = `cog (code officiel gÃ©ographique)`,
+  dplyr::rename(INSEE_COM = `cog (code officiel géographique)`,
                 dotation_fonct = `dotation globale de fonctionnement`,
                 taxe_habit = `taxe d'habitation (y compris thlv) - taux`,
-                taxe_add_fonciere_non_bati = `taxe additionnelle Ã  la taxe fonciÃ¨re sur les propriÃ©tÃ©s non bÃ¢ties - taux`,
-                impo_forfaitaire_entreprise_reseau = `impositions forfaitaires sur les entreprises de rÃ©seau - taux`,
-                cotis_va_entreprise = `cotisation sur la valeur ajoutÃ©e des entreprises - taux`,
-                cotis_fonciere_entreprise = `cotisation fonciÃ¨re des entreprises - taux`,
-                taxe_prof = `taxe professionnelle (hors bases Ã©crÃªtÃ©es) - taux`,
+                taxe_add_fonciere_non_bati = `taxe additionnelle à la taxe foncière sur les propriétés non bâties - taux`,
+                impo_forfaitaire_entreprise_reseau = `impositions forfaitaires sur les entreprises de réseau - taux`,
+                cotis_va_entreprise = `cotisation sur la valeur ajoutée des entreprises - taux`,
+                cotis_fonciere_entreprise = `cotisation foncière des entreprises - taux`,
+                taxe_prof = `taxe professionnelle (hors bases écrêtées) - taux`,
                 encours_dette = `encours total de la dette au 31/12/n`,
-                depense_equipement = `dÃ©penses d'Ã©quipement`,
-                caf = `capacitÃ© d'autofinancement = caf`,
-                taxe_fonciere_non_bati = `taxe fonciÃ¨re sur les propriÃ©tÃ©s non bÃ¢ties - taux`,
-                impot_locaux =`impÃ´ts locaux`,
+                depense_equipement = `dépenses d'équipement`,
+                caf = `capacité d'autofinancement = caf`,
+                taxe_fonciere_non_bati = `taxe foncière sur les propriétés non bâties - taux`,
+                impot_locaux =`impôts locaux`,
                 resultat_comptable = `resultat comptable = a - b = r`, 
-                taxe_fonciere_bati = `taxe fonciÃ¨re sur les propriÃ©tÃ©s bÃ¢ties - taux`,
+                taxe_fonciere_bati = `taxe foncière sur les propriétés bâties - taux`,
                 taxe_surface_commerciales = `taxe sur les surfaces commerciales - taux`,
-                annee = annÃ©e,
+                annee = année,
                 pop = population)%>%
   dplyr::select(INSEE_COM, dotation_fonct,taxe_habit,taxe_add_fonciere_non_bati ,
                 impo_forfaitaire_entreprise_reseau, cotis_va_entreprise,cotis_fonciere_entreprise,
@@ -120,13 +123,11 @@ city_all <- city_all %>%
 city <- filter(city_all, annee == 2014)
 
 
-# Base panel (pour suite du papier): quatre annÃ©es fusionnÃ©es avec base collectivitÃ©s
+# Base panel (pour suite du papier): quatre années fusionnées avec base collectivités
 city_y <- city_all %>% dplyr::filter(annee %in% c(2000,2005,2010,2015))
 data_epci_com <- readr::read_csv("data_epci_com.csv")
 base_epci_com <- data_epci_com %>% dplyr::rename(INSEE_COM = insee)%>% dplyr::select(-X1,-starts_with("nb_com"))
 base_epci_nbcom <- data_epci_com %>% dplyr::rename(INSEE_COM = insee)%>% dplyr::select(-X1,-starts_with("fisc"))
-
-
 base_epci_com2 <- melt(base_epci_com, id.vars=c("INSEE_COM","siren_epci"))
 base_epci_nbcom2 <- melt(base_epci_nbcom, id.vars=c("INSEE_COM","siren_epci"))
 base_epci_com2 <- base_epci_com2%>% mutate(annee = stringr::str_sub(variable,5,length(variable)))%>%
@@ -136,19 +137,37 @@ base_epci_nbcom2 <- base_epci_nbcom2%>% mutate(annee = stringr::str_sub(variable
 base_epci_fiscalite <- base_epci_com2%>% 
   dplyr::left_join(base_epci_nbcom2, b =c("INSEE_COM","siren_epci","annee"))
 head(base_epci_fiscalite)
+table(base_epci_fiscalite$fisc)
+# on remplace 4TX par FA et TPU par FPU
+base_epci_fiscalite$fisc[base_epci_fiscalite$fisc == "4TX"] <- "FA"
+base_epci_fiscalite$fisc[base_epci_fiscalite$fisc == "TPU"] <- "FPU"
+
 base_epci_fiscalite$annee <- as.integer(base_epci_fiscalite$annee)
 
-city_y2 <- city_y %>% dplyr::left_join(base_epci_fiscalite, by =c("INSEE_COM","annee"))
-data_panel <- communes %>% left_join(city_y2, by ="INSEE_COM")
+base_epci_fiscalite2 <- base_epci_fiscalite %>%
+  dplyr::distinct(INSEE_COM,annee,.keep_all=TRUE)
+
+city_y2 <- city_y %>% dplyr::left_join(base_epci_fiscalite2, by =c("INSEE_COM","annee"))
+communes_reg <- communes %>% filter(CODE_REG %in% c(32))
+# en fait on laisse le join suivant pour filtrer les communes qui ne sont pas dans 
+  # le shapefile:
+data_panel <- communes%>% left_join(city_y2, by ="INSEE_COM")
+nrow(data_panel)
 save(data_panel, file = "data_panel.RData")
-data_regions_panel <- data_panel %>% filter(CODE_REG %in% c(11,32,44))
+# ---------------------------------------------------
+load("data_panel.RData")
+# On ne garde que Hauts de France
+data_regions_panel <- data_panel %>% filter(CODE_REG %in% c(32))
+nrow(data_regions_panel)
+
+save(communes_reg, file = "communes_reg.RData")
 save(data_regions_panel, file = "data_regions_panel.RData")
 data_reg_panel <- as(data_regions_panel, "Spatial")
 save(data_reg_panel, file = "data_reg_panel.RData")
 
-rm(city_all)
+rm(city_all,city_y,city_y2,data_panel)
 
-# On fusionne avec les donnÃ©es locales 2014
+# On fusionne avec les données locales 2014 pour la base en coupe
 city2 <- city %>% dplyr::left_join(dataloc_2014, by = "INSEE_COM")
 base_epci_fisc <- base_epci_fisca2014 %>% dplyr::rename(EPCI = siren_epci)
 city3 <- city2 %>% dplyr::left_join(base_epci_fisc, by = "EPCI")
@@ -160,7 +179,7 @@ save(dataset, file = "data2014.RData")
 rm(city,city2,city3,communes,dataloc_2014)
 head(dataset)
 
-# focus sur quelques rÃ©gions
+# focus sur quelques régions
 load("data2014.RData")
 # Ile de France, Alsace Champagne Ardenne Lorraine, Bretagne, NPDC
 # centre val de loire, 
@@ -173,7 +192,7 @@ save(data_reg, file = "data_reg.RData")
 load("data_regions.RData")
 ggplot(data = data_regions) + geom_sf(aes(fill = taxe_habit),colour = NA) +
   coord_sf(datum = NA)+
-  ggtitle("RÃ©gions spÃ©cifiques nord France TH 2014")+
+  ggtitle("Régions spécifiques nord France TH 2014")+
   theme(text=element_text(size=12),
         plot.title = element_text(hjust = 0.5, face = "bold"),
         plot.subtitle = element_text(hjust = 0.5),
@@ -182,7 +201,7 @@ ggplot(data = data_regions) + geom_sf(aes(fill = taxe_habit),colour = NA) +
 
 ggplot(data = data_regions) + geom_sf(aes(fill = taxe_fonciere_non_bati),colour = NA) +
   coord_sf(datum = NA)+
-  ggtitle("RÃ©gions spÃ©cifiques nord France TPFNB 2014")+
+  ggtitle("Régions spécifiques nord France TPFNB 2014")+
   theme(text=element_text(size=12),
         plot.title = element_text(hjust = 0.5, face = "bold"),
         plot.subtitle = element_text(hjust = 0.5),
@@ -191,7 +210,7 @@ ggplot(data = data_regions) + geom_sf(aes(fill = taxe_fonciere_non_bati),colour 
 
 ggplot(data = data_regions) + geom_sf(aes(fill = taxe_fonciere_bati),colour = NA) +
   coord_sf(datum = NA)+
-  ggtitle("RÃ©gions spÃ©cifiques nord France TPFB 2014")+
+  ggtitle("Régions spécifiques nord France TPFB 2014")+
   theme(text=element_text(size=12),
         plot.title = element_text(hjust = 0.5, face = "bold"),
         plot.subtitle = element_text(hjust = 0.5),
@@ -212,8 +231,8 @@ plot_france_taux_annee(dataset, 2014,"taxe_habit")
 plot_france_taux_annee(dataset, 2014,"taxe_fonciere_bati")
 plot_france_taux_annee(dataset, 2014,"taxe_fonciere_non_bati")
 
-# Ne pas faire tourner, ce sera pour gÃ©nÃ©rer automatiquement toutes les cartes, mais
-# c'est trÃ¨s long
+# Ne pas faire tourner, ce sera pour générer automatiquement toutes les cartes, mais
+# c'est très long
 annee <- c(2000,2015)
 var <- c("taxe_habit","taxe_fonciere_non_bati","taxe_fonciere_bati")
 
@@ -239,7 +258,7 @@ class(data)
   # - the second slot is the polygons 
   # - the third slot is the bounding box drawn around the boundaries
   # - the fourth slot contains the porjections proj4string
-# on repasse Ã  un objet sp pour utiliser les packages de regression
+# on repasse à un objet sp pour utiliser les packages de regression
 str(slot(data,"data"))
 
 
@@ -364,7 +383,7 @@ summary(data@data$nb_com)
 data@data$nb_com[is.na(data@data$nb_com)] <- 0
 
 # lencours_dette, dotation_fonc
-# eventuellement ajouter var sur activitÃ© Ã©co, chomage, nb entreprises
+# eventuellement ajouter var sur activité éco, chomage, nb entreprises
 model_th <- taxe_habit~lnb_log+lpop+lnb_menage+
   lencours_dette+ldotation_fonct+fisca + nb_com
 fit_lm_th <- lm(model_th, data = data@data,
@@ -383,13 +402,13 @@ summary(fit_lm_tfnb)
 stargazer(fit_lm_th,fit_lm_tfnb,fit_lm_tfb, 
           dep.var.labels=c("Taxe d'Habitation","TPFNB","TPFB"),
           covariate.labels=c("Nb. logements (log)","Population (log)",
-                             "Nb. mÃ©nages (log)", "Nb. propriÃ©taires (log)",
+                             "Nb. ménages (log)", "Nb. propriétaires (log)",
                              "Encours dette (log)", "Dotation fonctionnelle (log)",
-                             "Type de fiscalitÃ© : FA","Type de fiscalitÃ© : FPU",
+                             "Type de fiscalité : FA","Type de fiscalité : FPU",
                              "Nb. communes EPCI"))
 # modeling spatial dependence
   # weight matrix based on queen
-# attention cela prend du temps de crÃ©er la matrice des voisins
+# attention cela prend du temps de créer la matrice des voisins
 list_queen <- spdep::poly2nb(data, queen = T)
 #save(list_queen, file = "liste_queen.RData")
 save(list_queen, file = "liste_queen_reg.RData")
@@ -402,7 +421,7 @@ print(W_q, zero.policy=TRUE) # 12 communes sans voisins
 #plot(W_q,coordinates(data))
 
 # weight matrix based on rook
-# attention, pareil, cela prend du temps de crÃ©er cette matrice:
+# attention, pareil, cela prend du temps de créer cette matrice:
 list_rook <- spdep::poly2nb(data, queen = F)
 #save(list_rook, file = "liste_rook.RData")
 save(list_rook, file = "liste_rook_reg.RData")
@@ -498,10 +517,10 @@ text(1,1,"High-High",col="gray79")
 # local Moran I
 lm_th <- localmoran(data@data$taxe_habit, listw = W, zero.policy = T)
 tab2 <- as.data.frame(lm_th)
-  # La variable Ii est l'indice d'autocorrÃ©lation spatiale local de la rÃ©gion
-    # l'indice sera positif pour les provinces de type Low-Low ou High-High mais nÃ©gatif pour les
+  # La variable Ii est l'indice d'autocorrélation spatiale local de la région
+    # l'indice sera positif pour les provinces de type Low-Low ou High-High mais négatif pour les
     # provinces de type Low-High ou High-Low.
-  # la variable Pr(z>0) exprime la mÃªme chose en fournissant la p-value du test d'autocorrÃ©lation
+  # la variable Pr(z>0) exprime la même chose en fournissant la p-value du test d'autocorrélation
     # spatiale locale.
 tab <- data@data
 tab$Y <- tab$taxe_habit
@@ -604,7 +623,7 @@ table_tests <- xtable(t(df))
 colnames(table_tests) <- c("stat","p_value")
 knitr::kable(table_tests)
 stargazer(table_tests)
-  # il y a de l'autocorrÃ©lation 
+  # il y a de l'autocorrélation 
   
 
 
@@ -628,7 +647,7 @@ table_tests <- xtable(t(df))
 colnames(table_tests) <- c("stat","p_value")
 knitr::kable(table_tests)
 
-# il y a de l'autocorrÃ©lation 
+# il y a de l'autocorrélation 
 
 
 # LM test for spatial dependence are included in lm.LMtests
@@ -651,7 +670,7 @@ table_tests <- xtable(t(df))
 colnames(table_tests) <- c("stat","p_value")
 knitr::kable(table_tests)
 
-# il y a de l'autocorrÃ©lation 
+# il y a de l'autocorrélation 
 # on penche vers un modele SARMA
 
 # Spatial regressions -------------------------------
@@ -666,7 +685,7 @@ summary(fit_sar_tfnb)
 fit_sar_tfb <- lagsarlm(model_tfb, data = data@data, W,
                        zero.policy = T)
 summary(fit_sar_tfb)
-# Pour un SDM il faut Ã©crire type = "mixed" dans la commande:
+# Pour un SDM il faut écrire type = "mixed" dans la commande:
 fit_sar_th <- lagsarlm(taxe_habit~lnb_log+lpop+
                          lencours_dette + ldotation_fonct+lpib, data = data@data, W,
                        zero.policy = T, type = "mixed")
@@ -697,7 +716,7 @@ data@data$sar_res_tfb <- resid(sar2sls_fit_tfb) # residuals sar
 data@data$ols_res_tfnb <- resid(fit_lm_tfnb) # residuals ols
 data@data$sar_res_tfnb <- resid(sar2sls_fit_tfnb) # residuals sar
 
-# plot des rÃ©sidus pour TH - takes long time
+# plot des résidus pour TH - takes long time
 spplot(data,"ols_res_th",
        at=seq(min(data@data$ols_res_th,na.rm=TRUE),max(data@data$ols_res_th,na.rm=TRUE),length=12),col.regions=rev(brewer.pal(11,"RdBu")))
 
@@ -739,33 +758,126 @@ gwr_model_th<- gwr(taxe_fonciere_bati~lnb_log+lpop+
 
 # ------------------------------------------------------------------------
 # ------------------------------------------------------------------------
-# packages
-library(plm)
-library(splm)
+# PANEL ANALYSIS
 
 
 # Creation d'un objet panel
-# objet pour dÃ©finir la matrice de voisins: 
-load("data_regions_panel.RData")
-data_regions_panel2 <- data_regions_panel %>% dplyr::filter(annee == 2015)
-data_regions_panel_2015 <- as(data_regions_panel2, "Spatial")
+# objet pour définir la matrice de voisins: 
+load("data_regions_panel.RData")#sf object
+load("communes_reg.RData") #sf object
 
-# objet pour dÃ©finir les donnÃ©es de panel
-load("data_reg_panel.RData")
-tab <- data_reg_panel@data
-tab <- plm::pdata.frame(tab,index = c("INSEE_COM","annee"))
-  # tab objet pour les estimations
+# objet pour définir les données de panel
+load("data_reg_panel.RData")#sp object
+tab1 <- data_regions_panel
 
-# Definition des voisins : on prend les voisins en 2015 et on 
-  # suppose que les voisins sont constants sur la pÃ©riode d'estimation
-list_queen <- spdep::poly2nb(data_regions_panel_2015, queen = T)
-save(list_queen, file = "liste_queen_reg_2015.RData")
-load("liste_queen_reg_2015.RData")
+# Pooled OLS ---------------------------------------------
+# variables expliquées
+
+summary(tab1$taxe_habit)
+summary(tab1$taxe_fonciere_bati)
+summary(tab1$taxe_fonciere_non_bati)
+
+# variables explicatives
+tab1$ldotation_fonct <- log(tab1$dotation_fonct)
+tab1$ldotation_fonct[is.infinite(tab1$ldotation_fonct)] <- 0
+summary(tab1$ldotation_fonct)
+summary(tab1$pop)
+tab1$lpop <- log(tab1$pop)
+summary(tab1$lpop)
+summary(tab1$encours_dette)
+tab1$lencours_dette <- log(tab1$encours_dette)
+tab1$lencours_dette[is.infinite(tab1$lencours_dette)] <- 0
+tab1$lencours_dette[is.na(tab1$lencours_dette)] <- 0
+summary(tab1$lencours_dette)
+# creation du facteur d'appartenance fiscale de la com ds EPCI
+table(tab1$fisc)
+sum(is.na(tab1$fisc))
+tab1$fisca <- tab1$fisc
+tab1$fisca[is.na(tab1$fisca)] <-  "NFP"
+tab1$fisca <- factor(tab1$fisca, levels = c("NFP","FA","FPU"))
+table(tab1$fisca)
+summary(tab1$nb_com)
+tab1$nb_com[is.na(tab1$nb_com)] <- 0 # quand NA, n'appartient pas à EPCI
+# on remplace par 0 communes (comme pour analyse en coupe)
+
+# On garde observations présentes tous les ans pour un balanced panel:
+# transformation en pdata.frame pour l'estimation
+tab <- plm::pdata.frame(tab1,index = c("INSEE_COM","annee"))
+tab2 <- plm::make.pbalanced(tab,balance.type = "shared.individuals")
+is.pbalanced(tab2)
+table(tab2$annee)
+  # tab2 objet pour les estimations
+
+# attention il faut enlever les obs du shapefile qui ne sont pas dans
+# le balanced panel (pour la création de la matrice de voisins)
+communes_reg2 <- filter(communes_reg, INSEE_COM %in% tab2$INSEE_COM)
+communes_regions <- as(communes_reg2, "Spatial")# creation objet sp
+
+# Definition des voisins : on prend les voisins ds le shapefile et on 
+# suppose que les voisins sont constants sur la période d'estimation
+list_queen <- spdep::poly2nb(communes_regions, queen = T)
+save(list_queen, file = "liste_queen_regions.RData")
+load("liste_queen_regions.RData")
 # this is rapid:
 W_q <- spdep::nb2listw(list_queen, style = "W", zero.policy = TRUE)
 print(W_q, zero.policy=TRUE) # 12 communes sans voisins
 
 W <- W_q
-# Modele a effets aleatoires spatial 
-spml(formula = model_th, data = tab, 
-     index = NULL, listw = W,model = "random", lag = T, spatial.error = "b")
+
+save(W,file = "W_panel.Rdata")
+save(tab2, file = "tab2_panel.RData")
+
+# Estimation différents modeles ----------------------------------------------
+model_th <- taxe_habit~lpop+
+  lencours_dette+ldotation_fonct+fisca + nb_com
+# modele à effets fixes
+fit_lm_th <- plm(model_th, data = tab2,model = "within")
+summary(fit_lm_th)
+
+model_tfb <- taxe_fonciere_bati~lpop+
+  lencours_dette + ldotation_fonct+fisca+ nb_com
+fit_lm_tfb <- plm(model_tfb, data = tab2,model = "within")
+summary(fit_lm_tfb)
+
+model_tfnb <- taxe_fonciere_non_bati~lpop+
+  lencours_dette + ldotation_fonct+fisca+ nb_com
+fit_lm_tfnb <- plm(model_tfnb, data = tab2,model = "within")
+summary(fit_lm_tfnb)
+
+stargazer(fit_lm_th,fit_lm_tfnb,fit_lm_tfb, 
+          dep.var.labels=c("Taxe d'Habitation","TPFNB","TPFB"),
+          covariate.labels=c("Population (log)",
+                             "Encours dette (log)", "Dotation fonctionnelle (log)",
+                             "Type de fiscalité : FA","Type de fiscalité : FPU",
+                             "Nb. communes EPCI"))
+
+
+
+# Modele a effets aléatoires spatial 
+# random effect, no error term SAR
+sar_random_spatial_th <- spml(formula = model_th, data = tab2, 
+     index = NULL, listw = W,model = "random", lag = T, spatial.error = "none")
+
+# random effect, only error term SEM
+sem_random_spatial_th <- spml(formula = model_th, data = tab2, 
+     index = NULL, listw = W,model = "random", lag = F, spatial.error = "b")
+sem_random_spatial_th <- spml(formula = model_th, data = tab2, 
+     index = NULL, listw = W,model = "random", lag = F, spatial.error = "kkp")
+
+# random effect, lag and error term SARAR
+# random effect, no error term SAR
+sarar_random_spatial_th <- spml(formula = model_th, data = tab2, 
+    index = NULL, listw = W,model = "random", lag = T, spatial.error = "b")
+sarar_random_spatial_th <- spml(formula = model_th, data = tab2, 
+   index = NULL, listw = W,model = "random", lag = T, spatial.error = "kkp")
+
+
+# Modele à effets fixes spatial
+# fixed effect,  error term SARAR
+sar_fe_spatial_th <- spml(formula = model_th, data = tab2, 
+    index = NULL, listw = W,model = "random", lag = T, spatial.error = "b",
+    model = "within",effect = "individual", method = "eigen", na.action = na.fail,
+    quiet = TRUE, zero.policy = T, interval = NULL,
+    tol.solve = 1e-10, control = list(), legacy = FALSE)
+
+
