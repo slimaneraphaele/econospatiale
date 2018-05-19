@@ -809,7 +809,9 @@ print(xtable(as.is(results), caption = "Modèle SAR", digits = 3, auto = TRUE,
       hline.after = hlines,
       sanitize.text.function = identity,booktabs = T,size="\\fontsize{9pt}{10pt}\\selectfont")
 
-
+results_sar <- list("fit_sar_th" = fit_sar_th,"fit_sar_tfb" = fit_sar_tfb,
+                    "fit_sar_tfnb"=fit_sar_tfnb, "W" = W)
+save(results_sar, file = "results_sar.RData")
 # Marginal effects ---------------------------------
 # a retravailler, trop long
 imp_th <- impacts(fit_sar_th, listw=W )
@@ -971,9 +973,20 @@ print(xtable(as.is(results), caption = "Modèle SARAR", digits = 3, auto = TRUE,
       hline.after = hlines,
       sanitize.text.function = identity,booktabs = T,size="\\fontsize{9pt}{10pt}\\selectfont")
 
-  # Reste le calcul des effets directs et indirects
-  # Vérifier que c'est la bonne variable base pour les différents modeles
-  # Intégrer une matrice de poids avec vari : meme EPCI, même département
+
+results_sarar <- list("sarar_th" =sarar_th, "sarar_tfb" =sarar_tfb,
+                      "sarar_tfnb" = sarar_tfnb)
+save(results_sarar, file = "results_sarar_coupe.RData")
+# Calcul des effets directs et indirects 
+labels <- c("Population (log)", "Encours dette (log)", "Type de fisca. : FA", 
+            "Type de fisca.: FPU")
+col <- c("Direct", "Indirect", "Total", "Direct.pval", "Indirect.pval", "Total.pval")
+imp2014_th <- impacts(sarar_th, listw=W) 
+tab <- summary(imp_th, zstats = TRUE)
+df <- data.frame(imp_th[["res"]], tab[["pzmat"]])
+row.names(df) <- labels
+colnames(df) <- col
+xtable(df, digits = 4)
 
 # ------------------------------------------------------------------------
 # ------------------------------------------------------------------------
@@ -1047,11 +1060,17 @@ summary(tab1$limpot_locaux)
 panel_th <- taxe_habit~  lpop+lsuperficie+lencours_dette+ldotation_fonct+
   ldepense_equip + limpot_locaux+ fisca + nb_com +dep
 
+panel_th_fe <- taxe_habit~  lpop+lencours_dette+ fisca 
+
 panel_tfb <- taxe_fonciere_bati~  lpop+lsuperficie+lencours_dette+ldotation_fonct+
   ldepense_equip + limpot_locaux+ fisca + nb_com +dep
 
+panel_tfb_fe <- taxe_fonciere_bati~  lpop+lencours_dette+ fisca  
+
 panel_tfnb <- taxe_fonciere_non_bati~ lpop+lsuperficie+lencours_dette+ldotation_fonct+
   ldepense_equip + limpot_locaux+ fisca + nb_com +dep
+
+panel_tfnb_fe <- taxe_fonciere_non_bati~  lpop+lencours_dette+ fisca 
 
 # On garde observations pr?sentes tous les ans pour un balanced panel:
 # transformation en pdata.frame pour l'estimation
@@ -1098,7 +1117,7 @@ y <- model.extract(mf, "response")
 x <- model.matrix(mt, mf)
 T_ <- max(tapply(x[,1],tab2$id,length))
 T_
-
+tab2 <- tab2 %>% dplyr::filter(annee !=1) # on restreint à 3 ans (pb de trop gde dim sinon)
 tab3 <- plm::pdata.frame(tab2,index = c("id","annee"))
 
 # attention il faut enlever les obs du shapefile qui ne sont pas dans
@@ -1134,7 +1153,7 @@ W <- W_q
 fit_pols_th <- plm(panel_th, data = tab3,model = "pooling")
 summary(fit_pols_th)
 # modele ? effets fixes
-fit_fe_th <- plm(panel_th, data = tab3,model = "within",
+fit_fe_th <- plm(panel_th_fe, data = tab3,model = "within",
                  effect = "individual")
 summary(fit_fe_th)
 # random effect
@@ -1147,7 +1166,7 @@ summary(fit_re_th)
 fit_pols_tfb <- plm(panel_tfb, data = tab3,model = "pooling")
 summary(fit_pols_tfb)
 # modele ? effets fixes
-fit_fe_tfb <- plm(panel_tfb, data = tab3,model = "within",
+fit_fe_tfb <- plm(panel_tfb_fe, data = tab3,model = "within",
                  effect = "individual")
 summary(fit_fe_tfb)
 # random effect
@@ -1160,7 +1179,7 @@ summary(fit_re_tfb)
 fit_pols_tfnb <- plm(panel_tfnb, data = tab3,model = "pooling")
 summary(fit_pols_tfnb)
 # modele ? effets fixes
-fit_fe_tfnb <- plm(panel_tfnb, data = tab3,
+fit_fe_tfnb <- plm(panel_tfnb_fe, data = tab3,
                    model = "within",effect = "individual")
 summary(fit_fe_tfnb)
 # random effect
@@ -1183,43 +1202,333 @@ stargazer(fit_fe_th,fit_re_th,fit_fe_tfnb,fit_re_tfnb,fit_fe_tfb,fit_re_tfb,
           df = FALSE)
 
 # Test d'Hausman sans effet spatial (plm)--------------------
-hausman_panel <- phtest(panel_th, data = tab3)
-print(hausman_panel)
+panel_th <- panel_th_fe
+panel_tfb <- panel_tfb_fe
+panel_tfnb <- panel_tfnb_fe
+
+hausman_panel_th <- phtest(panel_th, data = tab3)
+print(hausman_panel_th)
+
+hausman_panel_tfb <- phtest(panel_tfb, data = tab3)
+print(hausman_panel_tfb)
+
+hausman_panel_tfnb <- phtest(panel_tfnb, data = tab3)
+print(hausman_panel_tfnb)
+    # choose fixed effects model 
 
 # Test d'Hausman robuste à l'autocorrélation spatiale (splm)
-hausman_sar <- sphtest(x = panel_th,x2 = sar_random_spatial_th ,data=tab3,
+
+hausman_sar <- sphtest(x = panel_th ,data=tab3,
                              listw =W, spatial.model = "lag", method="ML")
-print(hausman_sar)
+hausman_sar <- sphtest(x = panel_tfb ,data=tab3,
+                       listw =W, spatial.model = "lag", method="ML")
+hausman_sar <- sphtest(x = panel_tfnb ,data=tab3,
+                       listw =W, spatial.model = "lag", method="ML")
 
+# choose fixed effect model
 # Lagrange tests -----------------------------------------------
-LM_th <- slmtest(fit_re_th, data=tab3, listw = W, test="lml")
-print(LM_th)
+LM_th_lag <- slmtest(fit_fe_th, data=tab3, listw = W, test="lml")
+print(LM_th_lag)
+LM_th_err <- slmtest(fit_fe_th, data=tab3, listw = W, test="lme")
+print(LM_th_err)
+LM_th_rlag <- slmtest(fit_fe_th, data=tab3, listw = W, test="rlml")
+print(LM_th_rlag)
+LM_th_rerr <- slmtest(fit_fe_th, data=tab3, listw = W, test="rlme")
+print(LM_th_rerr)
 
-# Modele a effets al?atoires spatial 
-# random effect, no error term SAR
-W2 <- W_r
-sar_random_spatial_th <- spgm(formula = panel_th, data = tab3, 
-     index = NULL, listw = W,model = "random", 
+LMerr <- LM_th_err
+LMlag <- LM_th_lag
+RLMerr <- LM_th_rerr
+RLMlag <- LM_th_rlag
+df <- data.frame('LMerr' = c(LMerr$statistic,LMerr$p.value),
+                 'LMlag' = c(LMlag$statistic,LMlag$p.value),
+                 'RLMerr' = c(RLMerr$statistic,RLMerr$p.value),
+                 'RLMlag' = c(RLMlag$statistic,RLMlag$p.value) )
+
+table_tests_th <- xtable(t(df))
+colnames(table_tests_th) <- c("stat","p_value")
+knitr::kable(table_tests_th)
+  #modele sarar
+
+# TFB
+LM_tfb_lag <- slmtest(fit_fe_tfb, data=tab3, listw = W, test="lml")
+print(LM_tfb_lag)
+LM_tfb_err <- slmtest(fit_fe_tfb, data=tab3, listw = W, test="lme")
+print(LM_tfb_err)
+LM_tfb_rlag <- slmtest(fit_fe_tfb, data=tab3, listw = W, test="rlml")
+print(LM_tfb_rlag)
+LM_tfb_rerr <- slmtest(fit_fe_tfb, data=tab3, listw = W, test="rlme")
+print(LM_tfb_rerr)
+
+LMerr <- LM_tfb_err
+LMlag <- LM_tfb_lag
+RLMerr <- LM_tfb_rerr
+RLMlag <- LM_tfb_rlag
+df <- data.frame('LMerr' = c(LMerr$statistic,LMerr$p.value),
+                 'LMlag' = c(LMlag$statistic,LMlag$p.value),
+                 'RLMerr' = c(RLMerr$statistic,RLMerr$p.value),
+                 'RLMlag' = c(RLMlag$statistic,RLMlag$p.value) )
+
+table_tests_tfb <- xtable(t(df))
+colnames(table_tests_tfb) <- c("stat","p_value")
+knitr::kable(table_tests_tfb)
+#modele sarar
+
+LM_tfnb_lag <- slmtest(fit_fe_tfnb, data=tab3, listw = W, test="lml")
+print(LM_tfnb_lag)
+LM_tfnb_err <- slmtest(fit_fe_tfnb, data=tab3, listw = W, test="lme")
+print(LM_tfnb_err)
+LM_tfnb_rlag <- slmtest(fit_fe_tfnb, data=tab3, listw = W, test="rlml")
+print(LM_tfnb_rlag)
+LM_tfnb_rerr <- slmtest(fit_fe_tfnb, data=tab3, listw = W, test="rlme")
+print(LM_tfnb_rerr)
+
+LMerr <- LM_tfnb_err
+LMlag <- LM_tfnb_lag
+RLMerr <- LM_tfnb_rerr
+RLMlag <- LM_tfnb_rlag
+df <- data.frame('LMerr' = c(LMerr$statistic,LMerr$p.value),
+                 'LMlag' = c(LMlag$statistic,LMlag$p.value),
+                 'RLMerr' = c(RLMerr$statistic,RLMerr$p.value),
+                 'RLMlag' = c(RLMlag$statistic,RLMlag$p.value) )
+
+table_tests_tfnb <- xtable(t(df))
+colnames(table_tests_tfnb) <- c("stat","p_value")
+knitr::kable(table_tests_tfnb)
+#modele sarar
+
+# Modele a effets fixe spatial  --------------------------------
+# no error term SAR
+sar_fe_spatial_th <- spgm(formula = panel_th, data = tab3, 
+     index = NULL, listw = W,model = "within", 
      lag = TRUE, spatial.error = FALSE, verbose = TRUE)
-summary(sar_random_spatial_th)
+summary(sar_fe_spatial_th)
+sar_fe_spatial_tfb <- spgm(formula = panel_tfb, data = tab3, 
+                          index = NULL, listw = W,model = "within", 
+                          lag = TRUE, spatial.error = FALSE, verbose = TRUE)
+summary(sar_fe_spatial_tfb)
+sar_fe_spatial_tfnb <- spgm(formula = panel_tfnb, data = tab3, 
+                          index = NULL, listw = W,model = "within", 
+                          lag = TRUE, spatial.error = FALSE, verbose = TRUE)
+summary(sar_fe_spatial_tfnb)
+covariate_labels <- c("Rho","Population (log)",
+                      "Encours dette (log)", 
+                      "Type de fisca.: FA","Type de fisca. : FPU",
+                      "Observations",
+                      "SSE",
+                      "df",
+                      "W", "FE")
+make_table_sar <- function(name_model, covariate_labels){
+  
+  tab <- xtable(name_model, digits = 2)
+  df <- data.frame(tab)
+  names <- row.names(df)
+  df <- df %>% dplyr::rename(tvalue = Pr...t..) %>% dplyr::select(-t.value)
+  df <- df %>% dplyr::mutate(se = round(Std..Error*1000)/1000)%>%
+    dplyr::mutate(se = paste0("$(",se,")$"))
+  df <- df %>% dplyr::mutate(signif = case_when(
+    tvalue < 0.01 ~"***",
+    tvalue < 0.05 ~"**",
+    tvalue < 0.1~"*",
+    TRUE ~''))
+  df <- df%>% dplyr::select(-tvalue,- Std..Error)
+  df <- df %>% dplyr::mutate(coef = round(Estimate*1000)/1000)%>%
+    dplyr::mutate(coef = paste0("$",coef, "^{",signif,"}$"))
+  df <- df %>% dplyr::select(-Estimate, -signif)
+  row.names(df) <- names
+  head(df)
+  
+  df <- df[,2:1]
+  colnames(df) <- c("Estim.", "s.d.")
+  df[nrow(df)+1,1] <- length(name_model[["residuals"]])
+  df[nrow(df)+1,1] <- round(name_model[["sse"]]*100)/100
+  df[nrow(df)+1,1] <- name_model[["df"]]
+  df[nrow(df)+1,1] <- "$W_{queen}$"
+  df[nrow(df)+1,1] <- "Yes"
+  row.names(df) <- covariate_labels
+  return(df)
+}
+df_th <- make_table_sar(sar_fe_spatial_th,covariate_labels) 
+df_tfnb <- make_table_sar(sar_fe_spatial_tfnb,covariate_labels) 
+df_tfb <- make_table_sar(sar_fe_spatial_tfb,covariate_labels) 
 
-# random effect, only error term SEM
-sem_random_spatial_th <- spgm(formula = panel_th, data = tab3, 
-     index = NULL, listw = W,model = "random", lag = F, spatial.error = TRUE)
+results <- cbind("TH" = df_th, "TPFNB" = df_tfnb, "TFB" = df_tfb)
+hlines <- c(-1,-1, 0,1, nrow(df_th)-5,nrow(df_th),nrow(df_th))
+comment <- list(pos = list(0), command = NULL)
+comment$pos[[1]] <- c(nrow(df_th))
+comment$command <- c(paste("\\hline\n",
+                           "{\\footnotesize \\textit{Note:}   $^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01}\n", sep = ""))
+print(xtable(as.is(results), caption = "Modèle SAR", digits = 3, auto = TRUE,
+             align= c("l","c","c","c","c","c","c")), add.to.row = comment, 
+      hline.after = hlines,
+      sanitize.text.function = identity,booktabs = T,size="\\fontsize{9pt}{10pt}\\selectfont")
 
-# random effect, lag and error term SARAR
-# random effect, no error term SAR
-sarar_random_spatial_th <- spml(formula = model_th, data = tab3, 
-    index = NULL, listw = W,model = "random", lag = T, spatial.error = "b")
-sarar_random_spatial_th <- spml(formula = model_th, data = tab3, 
-   index = NULL, listw = W,model = "random", lag = T, spatial.error = "kkp")
+
+# fixed effect, only error term SEM ----------------------------------
+
+sem_fe_spatial_th <- spgm(formula = panel_th, data = tab3, 
+     index = NULL, listw = W,model = "within", moments="fullweights",
+     lag = F, spatial.error = TRUE)
+summary(sem_fe_spatial_th)
+
+sem_fe_spatial_tfb <- spgm(formula = panel_tfb, data = tab3, 
+                          index = NULL, listw = W,model = "within", moments="fullweights",
+                          lag = F, spatial.error = TRUE)
+summary(sem_fe_spatial_tfb)
+
+sem_fe_spatial_tfnb <- spgm(formula = panel_tfnb, data = tab3, 
+                          index = NULL, listw = W,model = "within", moments="fullweights",
+                          lag = F, spatial.error = TRUE)
+summary(sem_fe_spatial_tfnb)
+
+# Mise en forme des résultats
+covariate_labels <- c("Population (log)",
+                      "Encours dette (log)", 
+                      "Type de fisca.: FA","Type de fisca. : FPU",
+                      "Observations",
+                      "W",
+                      "lambda", "$\\sigma^2$",
+                      "FE")
+make_table_sem <- function(name_model, covariate_labels){
+
+  tab <- xtable(name_model, digits = 2)
+  df <- data.frame(tab)
+  names <- row.names(df)
+  df <- df %>% dplyr::rename(tvalue = Pr...t..) %>% dplyr::select(-t.value)
+  df <- df %>% dplyr::mutate(se = round(Std..Error*1000)/1000)%>%
+    dplyr::mutate(se = paste0("$(",se,")$"))
+  df <- df %>% dplyr::mutate(signif = case_when(
+    tvalue < 0.01 ~"***",
+    tvalue < 0.05 ~"**",
+    tvalue < 0.1~"*",
+    TRUE ~''))
+  df <- df%>% dplyr::select(-tvalue,- Std..Error)
+  df <- df %>% dplyr::mutate(coef = round(Estimate*1000)/1000)%>%
+    dplyr::mutate(coef = paste0("$",coef, "^{",signif,"}$"))
+  df <- df %>% dplyr::select(-Estimate, -signif)
+  row.names(df) <- names
+  head(df)
+  
+  df <- df[,2:1]
+  colnames(df) <- c("Estim.", "s.d.")
+  df[nrow(df)+1,1] <- length(name_model[["residuals"]])
+  df[nrow(df)+1,1] <- "$W_{queen}$"
+  df[nrow(df)+1,1] <- round(name_model$rho[1]*100)/100
+  df[nrow(df)+1,1] <- round(name_model$rho[2]*1000)/1000
+  df[nrow(df)+1,1] <- "Yes"
+  row.names(df) <- covariate_labels
+  return(df)
+}
+df_th <- make_table_sem(sem_fe_spatial_th,covariate_labels) 
+df_tfnb <- make_table_sem(sem_fe_spatial_tfnb,covariate_labels) 
+df_tfb <- make_table_sem(sem_fe_spatial_tfb,covariate_labels) 
+
+results <- cbind("TH" = df_th, "TPFNB" = df_tfnb, "TFB" = df_tfb)
+hlines <- c(-1,-1, 0, nrow(df_th)-5,nrow(df_th),nrow(df_th))
+comment <- list(pos = list(0), command = NULL)
+comment$pos[[1]] <- c(nrow(df_th))
+comment$command <- c(paste("\\hline\n",
+                           "{\\footnotesize \\textit{Note:}   $^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01}\n", sep = ""))
+print(xtable(as.is(results), caption = "Modèle SEM", digits = 3, auto = TRUE,
+             align= c("l","c","c","c","c","c","c")), add.to.row = comment, 
+      hline.after = hlines,
+      sanitize.text.function = identity,booktabs = T,size="\\fontsize{9pt}{10pt}\\selectfont")
 
 
-# Modele ? effets fixes spatial
-# fixed effect,  error term SAR
-sar_fe_spatial_th <- spml(formula = model_th, data = tab3, 
-    index = NULL, listw = W, lag = T, spatial.error = "none",
-    model = "within",effect = "individual", method = "eigen")
+# FE, lag and error term SARAR ----------------------------------------
+W2 <- W_r
 
-# Les tests
-tests1 <- bsktests()
+sarar_fe_spatial_th <- spgm(formula = panel_th, data = tab3, 
+    index = NULL, listw = W,listw2 = W2,
+    model = "within", lag = T, spatial.error = TRUE)
+summary(sarar_fe_spatial_th)
+
+sarar_fe_spatial_tfb <- spgm(formula = panel_tfb, data = tab3, 
+                                index = NULL, listw = W,listw2 = W2,
+                                model = "within", lag = T, spatial.error = TRUE)
+summary(sarar_fe_spatial_tfb)
+
+sarar_fe_spatial_tfnb <- spgm(formula = panel_tfnb, data = tab3, 
+                                index = NULL, listw = W,listw2 = W2,
+                                model = "within", lag = T, spatial.error = TRUE)
+summary(sarar_fe_spatial_tfnb)
+# Mise en forme des résultats
+covariate_labels <- c("Rho", 
+                      "Population (log)",
+                      "Encours dette (log)", 
+                      "Type de fisca.: FA","Type de fisca. : FPU",
+                      "Observations",
+                      "W",
+                      "lambda", "$\\sigma^2$", "FE")
+make_table_sarar <- function(name_model, covariate_labels){
+
+  tab <- xtable(name_model, digits = 2)
+  df <- data.frame(tab)
+  names <- row.names(df)
+  df <- df %>% dplyr::rename(tvalue = Pr...t..) %>% dplyr::select(-t.value)
+  df <- df %>% dplyr::mutate(se = round(Std..Error*1000)/1000)%>%
+    dplyr::mutate(se = paste0("$(",se,")$"))
+  df <- df %>% dplyr::mutate(signif = case_when(
+    tvalue < 0.01 ~"***",
+    tvalue < 0.05 ~"**",
+    tvalue < 0.1~"*",
+    TRUE ~''))
+  df <- df%>% dplyr::select(-tvalue,- Std..Error)
+  df <- df %>% dplyr::mutate(coef = round(Estimate*1000)/1000)%>%
+    dplyr::mutate(coef = paste0("$",coef, "^{",signif,"}$"))
+  df <- df %>% dplyr::select(-Estimate, -signif)
+  row.names(df) <- names
+  head(df)
+  
+  df <- df[,2:1]
+  colnames(df) <- c("Estim.", "s.d.")
+  df[nrow(df)+1,1] <- length(name_model[["residuals"]])
+  df[nrow(df)+1,1] <- "$W_{queen}$"
+  df[nrow(df)+1,1] <- round(name_model$rho[1]*1000)/1000
+  df[nrow(df)+1,1] <- round(name_model$rho[2]*10000)/10000
+  df[nrow(df)+1,1] <- "Yes"
+  row.names(df) <- covariate_labels
+  return(df)
+}
+df_th <- make_table_sarar(sarar_fe_spatial_th,covariate_labels) 
+df_tfnb <- make_table_sarar(sarar_fe_spatial_tfnb,covariate_labels) 
+df_tfb <- make_table_sarar(sarar_fe_spatial_tfb,covariate_labels) 
+
+results <- cbind("TH" = df_th, "TPFNB" = df_tfnb, "TFB" = df_tfb)
+hlines <- c(-1,-1, 0, 1, nrow(df_th)-5,nrow(df_th),nrow(df_th))
+comment <- list(pos = list(0), command = NULL)
+comment$pos[[1]] <- c(nrow(df_th))
+comment$command <- c(paste("\\hline\n",
+                           "{\\footnotesize \\textit{Note:}   $^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01}\n", sep = ""))
+print(xtable(as.is(results), caption = "Modèle SARAR", digits = 3, auto = TRUE,
+             align= c("l","c","c","c","c","c","c")), add.to.row = comment, 
+      hline.after = hlines,
+      sanitize.text.function = identity,booktabs = T,size="\\fontsize{9pt}{10pt}\\selectfont")
+
+
+# Calcul des impacts
+labels <- c("Population (log)", "Encours dette (log)", "Type de fisca. : FA", 
+            "Type de fisca.: FPU")
+col <- c("Direct", "Indirect", "Total", "Direct.pval", "Indirect.pval", "Total.pval")
+imp_th <- impacts(sarar_fe_spatial_th, listw=W, time = 3) # 3 périodes
+tab <- summary(imp_th, zstats = TRUE)
+df <- data.frame(imp_th[["res"]], tab[["pzmat"]])
+row.names(df) <- labels
+colnames(df) <- col
+xtable(df, digits = 4)
+
+imp_tfb <- impacts(sarar_fe_spatial_tfb, listw=W, time = 3)
+tab <- summary(imp_tfb, zstats = TRUE)
+df <- data.frame(imp_tfb[["res"]], tab[["pzmat"]])
+row.names(df) <- labels
+colnames(df) <- col
+xtable(df, digits = 4)
+
+imp_tfnb <- impacts(sarar_fe_spatial_tfnb, listw=W, time = 3)
+tab <- summary(imp_tfnb, zstats = TRUE)
+df <- data.frame(imp_tfnb[["res"]], tab[["pzmat"]])
+row.names(df) <- labels
+colnames(df) <- col
+xtable(df, digits = 4)
+results_impacts_sarar_panel <- list("imp_th"=imp_th, "imp_tfb"=imp_tfb,"imp_tfnb"=imp_tfnb)
+save(results_impacts_sarar_panel, file = "results_impacts_sarar_panel.RData")
